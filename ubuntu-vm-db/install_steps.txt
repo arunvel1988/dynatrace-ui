@@ -1,0 +1,308 @@
+#####################################################################
+microservices-demo/
+│
+├── venv/
+├── users_service.py
+├── orders_service.py
+├── config.py
+├── logs/
+│   ├── users.log
+│   └── orders.log
+
+#####################################################################
+
+sudo apt update
+sudo apt install mysql-server -y
+
+sudo systemctl status mysql
+
+sudo mysql_secure_installation
+
+sudo mysql -u root -p
+
+CREATE DATABASE demo;
+
+CREATE USER 'demo'@'localhost' IDENTIFIED BY 'password';
+
+GRANT ALL PRIVILEGES ON demo.* TO 'demo'@'localhost';
+
+FLUSH PRIVILEGES;
+
+EXIT;
+
+
+mysql -u demo -p
+
+USE demo;
+SHOW TABLES;
+
+curl http://localhost:5000/init
+
+curl http://localhost:5001/init
+
+mysql -u demo -p
+
+USE demo;
+SHOW TABLES;
+
+curl -X POST http://localhost/users \
+-H "Content-Type: application/json" \
+-d '{"name":"Arun","email":"arun@test.com"}'
+
+SELECT * FROM users;
+
+SELECT * FROM orders;
+
+
+################################################################
+mkdir microservices-demo
+cd microservices-demo
+python3 -m venv venv
+source venv/bin/activate
+pip install flask pymysql requests gunicorn
+mkdir logs
+
+#################################################################
+nano config.py
+DB_CONFIG = {
+    "host": "localhost",
+    "user": "demo",
+    "password": "password",
+    "database": "demo"
+}
+
+#################################################################
+
+nano users_service.py
+
+
+from flask import Flask, jsonify, request
+import pymysql
+import logging
+from config import DB_CONFIG
+import time
+import random
+
+app = Flask(__name__)
+
+# Logging configuration
+logging.basicConfig(
+    filename="logs/users.log",
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(message)s"
+)
+
+def get_connection():
+    return pymysql.connect(**DB_CONFIG)
+
+@app.route("/health")
+def health():
+    return jsonify({"status": "Users Service UP"})
+
+@app.route("/init")
+def init_db():
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS users (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            name VARCHAR(100),
+            email VARCHAR(100),
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    conn.commit()
+    conn.close()
+    return "Users table ready"
+
+@app.route("/users", methods=["POST"])
+def create_user():
+    data = request.json
+    name = data.get("name")
+    email = data.get("email")
+
+    time.sleep(random.uniform(0.1, 0.5))
+
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        "INSERT INTO users (name, email) VALUES (%s, %s)",
+        (name, email)
+    )
+    conn.commit()
+    conn.close()
+
+    logging.info(f"User created: {name}")
+
+    return jsonify({"message": "User created"})
+
+@app.route("/users", methods=["GET"])
+def list_users():
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM users")
+    result = cursor.fetchall()
+    conn.close()
+
+    logging.info("Fetched all users")
+
+    return jsonify(result)
+
+@app.route("/users/<int:user_id>", methods=["GET"])
+def get_user(user_id):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM users WHERE id=%s", (user_id,))
+    result = cursor.fetchone()
+    conn.close()
+
+    if not result:
+        return jsonify({"error": "User not found"}), 404
+
+    return jsonify(result)
+
+if __name__ == "__main__":
+    app.run()
+
+
+    ########################################################################
+
+
+    nano orders_service.py
+
+    from flask import Flask, jsonify, request
+import pymysql
+import requests
+import logging
+from config import DB_CONFIG
+import time
+import random
+
+app = Flask(__name__)
+
+logging.basicConfig(
+    filename="logs/orders.log",
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(message)s"
+)
+
+def get_connection():
+    return pymysql.connect(**DB_CONFIG)
+
+@app.route("/health")
+def health():
+    return jsonify({"status": "Orders Service UP"})
+
+@app.route("/init")
+def init_db():
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS orders (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            user_id INT,
+            product VARCHAR(100),
+            amount DECIMAL(10,2),
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    conn.commit()
+    conn.close()
+    return "Orders table ready"
+
+@app.route("/orders", methods=["POST"])
+def create_order():
+    data = request.json
+    user_id = data.get("user_id")
+    product = data.get("product")
+    amount = data.get("amount")
+
+    # Call Users Service
+    user_check = requests.get(f"http://localhost:5000/users/{user_id}")
+
+    if user_check.status_code != 200:
+        return jsonify({"error": "User does not exist"}), 400
+
+    time.sleep(random.uniform(0.2, 1.0))
+
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        "INSERT INTO orders (user_id, product, amount) VALUES (%s, %s, %s)",
+        (user_id, product, amount)
+    )
+    conn.commit()
+    conn.close()
+
+    logging.info(f"Order created for user {user_id}")
+
+    return jsonify({"message": "Order created"})
+
+@app.route("/orders", methods=["GET"])
+def list_orders():
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM orders")
+    result = cursor.fetchall()
+    conn.close()
+
+    logging.info("Fetched all orders")
+
+    return jsonify(result)
+
+if __name__ == "__main__":
+    app.run()
+
+    ############################################################################
+source venv/bin/activate
+gunicorn -w 4 -b 127.0.0.1:5000 users_service:app
+
+source venv/bin/activate
+gunicorn -w 4 -b 127.0.0.1:5001 orders_service:app
+
+########################################################################################
+
+
+sudo nano /etc/nginx/sites-available/default
+
+server {
+    listen 80;
+
+    location /users {
+        proxy_pass http://127.0.0.1:5000;
+    }
+
+    location /orders {
+        proxy_pass http://127.0.0.1:5001;
+    }
+
+    location /health-users {
+        proxy_pass http://127.0.0.1:5000/health;
+    }
+
+    location /health-orders {
+        proxy_pass http://127.0.0.1:5001/health;
+    }
+}
+
+#######################################################################
+
+
+
+sudo nginx -t
+sudo systemctl restart nginx
+
+curl -X POST http://localhost/users \
+-H "Content-Type: application/json" \
+-d '{"name":"Arun","email":"arun@test.com"}'
+
+curl -X POST http://localhost/orders \
+-H "Content-Type: application/json" \
+-d '{"user_id":1,"product":"Laptop","amount":50000}'
+
+#######################################################################
+
+
+
+    
+    
