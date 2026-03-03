@@ -1,0 +1,72 @@
+########################################################################################
+
+
+
+wget -O Dynatrace-OneAgent-Linux-x86-1.331.39.20260206-150338.sh "https://wwl35201.live.dynatrace.com/api/v1/deployment/installer/agent/unix/default/latest?arch=x86" --header="Authorization: Api-Token <api_token>
+
+
+wget https://ca.dynatrace.com/dt-root.cert.pem ; ( echo 'Content-Type: multipart/signed; protocol="application/x-pkcs7-signature"; micalg="sha-256"; boundary="--SIGNED-INSTALLER"'; echo ; echo ; echo '----SIGNED-INSTALLER' ; cat Dynatrace-OneAgent-Linux-x86-1.331.39.20260206-150338.sh ) | openssl cms -verify -CAfile dt-root.cert.pem > /dev/null
+
+/bin/sh Dynatrace-OneAgent-Linux-x86-1.331.39.20260206-150338.sh --set-monitoring-mode=fullstack --set-app-log-content-access=true
+
+########################################################################################
+
+sudo apt update
+sudo apt install nginx -y
+sudo systemctl enable nginx
+sudo systemctl start nginx
+########################################################################################
+
+sudo apt install python3-pip -y
+pip3 install flask
+
+########################################################################################
+
+nano app.py
+
+
+from flask import Flask
+import time
+import random
+
+app = Flask(__name__)
+
+@app.route("/")
+def home():
+    time.sleep(random.uniform(0.1, 0.5))
+    return "Hello from Flask Backend!"
+
+@app.route("/slow")
+def slow():
+    time.sleep(2)
+    return "Slow endpoint!"
+
+@app.route("/error")
+def error():
+    return 1/0
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=5000)
+
+########################################################################################
+
+sudo nano /etc/nginx/sites-available/default
+
+location / {
+    proxy_pass http://127.0.0.1:5000;
+}
+
+
+sudo systemctl restart nginx
+########################################################################################
+while true; do curl http://localhost/slow; done
+
+http://<VM-IP>/error
+
+########################################################################################
+
+sudo apt install apache2-utils
+ab -n 1000 -c 50 http://localhost/
+
+
+    
