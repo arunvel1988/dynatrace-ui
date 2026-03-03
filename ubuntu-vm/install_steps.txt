@@ -17,8 +17,20 @@ sudo systemctl enable nginx
 sudo systemctl start nginx
 ########################################################################################
 
-sudo apt install python3-pip -y
-pip3 install flask
+sudo apt update
+sudo apt install python3-full python3-venv -y
+
+mkdir ~/flask-demo
+cd ~/flask-demo
+
+python3 -m venv venv
+
+source venv/bin/activate
+
+pip install --upgrade pip
+pip install flask
+
+
 
 ########################################################################################
 
