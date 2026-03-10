@@ -1,0 +1,20 @@
+##############################################################
+
+
+sudo apt update
+sudo apt install python3-full python3-venv -y
+
+mkdir ~/flask-demo
+cd ~/flask-demo
+
+python3 -m venv venv
+
+source venv/bin/activate
+
+
+
+pip install flask
+pip install opentelemetry-sdk
+pip install opentelemetry-exporter-otlp
+pip install opentelemetry-instrumentation-flask
+pip install opentelemetry-instrumentation-requests
