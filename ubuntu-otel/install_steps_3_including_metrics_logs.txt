@@ -90,7 +90,7 @@ tracer = trace.get_tracer(__name__)
 # METRICS
 # --------------------------------
 metric_exporter = OTLPMetricExporter(
-    endpoint=f"{DYNATRACE_ENDPOINT}/v2/metrics/otlp",
+    endpoint=f"{DYNATRACE_ENDPOINT}/v1/metrics",
     headers=HEADERS
 )
 metric_reader = PeriodicExportingMetricReader(metric_exporter)
@@ -104,7 +104,7 @@ request_counter = meter.create_counter("demo_requests", description="Counts demo
 # --------------------------------
 logger_provider = LoggerProvider(resource=resource)
 log_exporter = OTLPLogExporter(
-    endpoint=f"{DYNATRACE_ENDPOINT}/v2/logs/otlp",
+    endpoint=f"{DYNATRACE_ENDPOINT}/v1/logs",
     headers=HEADERS
 )
 logger_provider.add_log_record_processor(BatchLogRecordProcessor(log_exporter))
