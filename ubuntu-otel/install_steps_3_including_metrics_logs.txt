@@ -87,7 +87,7 @@ trace.set_tracer_provider(trace_provider)
 tracer = trace.get_tracer(__name__)
 
 # --------------------------------
-# METRICS
+# METRICS (simple cumulative)
 # --------------------------------
 metric_exporter = OTLPMetricExporter(
     endpoint=f"{DYNATRACE_ENDPOINT}/v1/metrics",
@@ -97,7 +97,10 @@ metric_reader = PeriodicExportingMetricReader(metric_exporter)
 meter_provider = MeterProvider(resource=resource, metric_readers=[metric_reader])
 metrics.set_meter_provider(meter_provider)
 meter = metrics.get_meter(__name__)
-request_counter = meter.create_counter("demo_requests", description="Counts demo requests")
+request_counter = meter.create_counter(
+    "demo_requests",
+    description="Counts demo requests"
+)
 
 # --------------------------------
 # LOGGING
@@ -128,7 +131,7 @@ FlaskInstrumentor().instrument_app(app)
 RequestsInstrumentor().instrument()
 
 # --------------------------------
-# Fancy Home Page
+# HTML Homepage
 # --------------------------------
 HTML = """
 <h1>Observability Demo (OpenTelemetry + Dynatrace)</h1>
