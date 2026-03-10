@@ -25,96 +25,202 @@ pip install opentelemetry-instrumentation
 
 nano app.py
 
-from flask import Flask
+from flask import Flask, render_template_string
 import requests
+import time
+import random
+import logging
 
-from opentelemetry import trace
+# OpenTelemetry
+from opentelemetry import trace, metrics
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
 
+from opentelemetry.sdk.metrics import MeterProvider
+from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
+from opentelemetry.exporter.otlp.proto.http.metric_exporter import OTLPMetricExporter
+
 from opentelemetry.instrumentation.flask import FlaskInstrumentor
 from opentelemetry.instrumentation.requests import RequestsInstrumentor
 
 
-# -----------------------------------
-# Flask Application
-# -----------------------------------
+# --------------------------------
+# Flask App
+# --------------------------------
 app = Flask(__name__)
 
-
-# -----------------------------------
-# Dynatrace Configuration
-# -----------------------------------
-DYNATRACE_ENDPOINT = "https://wwl35201.live.dynatrace.com/api/v2/otlp/v1/traces"
-
-
+# --------------------------------
+# Dynatrace Config
+# --------------------------------
+DYNATRACE_ENDPOINT = "https://wwl35201.live.dynatrace.com/api/v2/otlp"
 
 DYNATRACE_TOKEN = "dt0c01.IKL2DTVEM527NWBRZT63ZRN2.D5OXSNAVFEJ53QZ63KPXUQ73BWNLF3LHAWG6JPEEZBD6QDHCT3UTBJWUQJJWWOTU"
 
+headers = {
+    "Authorization": f"Api-Token {DYNATRACE_TOKEN}"
+}
 
-# -----------------------------------
+# --------------------------------
 # OpenTelemetry Resource
-# -----------------------------------
+# --------------------------------
 resource = Resource.create({
     "service.name": "flask-dynatrace-demo",
     "service.version": "1.0",
     "deployment.environment": "lab"
 })
 
+# --------------------------------
+# TRACES
+# --------------------------------
+trace_provider = TracerProvider(resource=resource)
 
-# -----------------------------------
-# Tracer Provider
-# -----------------------------------
-provider = TracerProvider(resource=resource)
-trace.set_tracer_provider(provider)
-
-
-# -----------------------------------
-# OTLP Exporter (Dynatrace)
-# -----------------------------------
-otlp_exporter = OTLPSpanExporter(
-    endpoint=DYNATRACE_ENDPOINT,
-    headers={
-        "Authorization": f"Api-Token {DYNATRACE_TOKEN}"
-    }
+trace_exporter = OTLPSpanExporter(
+    endpoint=f"{DYNATRACE_ENDPOINT}/v1/traces",
+    headers=headers
 )
 
-span_processor = BatchSpanProcessor(otlp_exporter)
-provider.add_span_processor(span_processor)
+trace_provider.add_span_processor(
+    BatchSpanProcessor(trace_exporter)
+)
 
+trace.set_tracer_provider(trace_provider)
 
-# -----------------------------------
+tracer = trace.get_tracer(__name__)
+
+# --------------------------------
+# METRICS
+# --------------------------------
+metric_exporter = OTLPMetricExporter(
+    endpoint=f"{DYNATRACE_ENDPOINT}/v1/metrics",
+    headers=headers
+)
+
+metric_reader = PeriodicExportingMetricReader(metric_exporter)
+
+meter_provider = MeterProvider(
+    resource=resource,
+    metric_readers=[metric_reader]
+)
+
+metrics.set_meter_provider(meter_provider)
+
+meter = metrics.get_meter(__name__)
+
+request_counter = meter.create_counter(
+    "demo_requests",
+    description="Counts demo requests"
+)
+
+# --------------------------------
+# LOGGING
+# --------------------------------
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("demo-app")
+
+# --------------------------------
 # Auto Instrumentation
-# -----------------------------------
+# --------------------------------
 FlaskInstrumentor().instrument_app(app)
 RequestsInstrumentor().instrument()
 
+# --------------------------------
+# Fancy Home Page
+# --------------------------------
+HTML = """
+<h1>Observability Demo (OpenTelemetry + Dynatrace)</h1>
 
-# -----------------------------------
+<h2>Available Endpoints</h2>
+
+<ul>
+<li><a href="/api">Generate API Trace</a></li>
+<li><a href="/orders">Orders Service</a></li>
+<li><a href="/slow">Slow Request</a></li>
+<li><a href="/error">Generate Error</a></li>
+<li><a href="/metrics">Metrics Demo</a></li>
+</ul>
+
+<p>Open Dynatrace and observe:</p>
+
+<ul>
+<li>✔ Distributed Traces</li>
+<li>✔ Metrics</li>
+<li>✔ Errors</li>
+</ul>
+"""
+
+# --------------------------------
 # Routes
-# -----------------------------------
+# --------------------------------
+
 @app.route("/")
 def home():
-    return "Hello Dynatrace Observability"
+    return render_template_string(HTML)
 
 
 @app.route("/api")
 def api():
-    requests.get("https://httpbin.org/get")
-    return "API called"
+
+    with tracer.start_as_current_span("api-call-span"):
+        request_counter.add(1)
+
+        logger.info("API endpoint called")
+
+        requests.get("https://httpbin.org/get")
+
+        return "API request completed"
 
 
 @app.route("/orders")
 def orders():
-    requests.get("https://httpbin.org/delay/1")
-    return "Orders processed"
+
+    with tracer.start_as_current_span("orders-service"):
+
+        logger.info("Processing order")
+
+        time.sleep(random.uniform(0.5, 1.5))
+
+        request_counter.add(1)
+
+        return "Order processed"
 
 
-# -----------------------------------
-# Start Flask
-# -----------------------------------
+@app.route("/slow")
+def slow():
+
+    with tracer.start_as_current_span("slow-operation"):
+
+        logger.warning("Slow request triggered")
+
+        time.sleep(3)
+
+        return "Slow request finished"
+
+
+@app.route("/error")
+def error():
+
+    with tracer.start_as_current_span("error-span"):
+
+        logger.error("Intentional error for demo")
+
+        raise Exception("Demo error for observability")
+
+
+@app.route("/metrics")
+def metrics_demo():
+
+    for i in range(5):
+        request_counter.add(1)
+
+    return "Metrics generated"
+
+
+# --------------------------------
+# Start Server
+# --------------------------------
+
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)
 
