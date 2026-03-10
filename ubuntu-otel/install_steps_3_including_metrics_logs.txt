@@ -32,7 +32,7 @@ import random
 import logging
 
 # OpenTelemetry
-from opentelemetry import trace, metrics, log
+from opentelemetry import trace, metrics
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
@@ -42,6 +42,7 @@ from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
 from opentelemetry.exporter.otlp.proto.http.metric_exporter import OTLPMetricExporter
 
+# OpenTelemetry logging (experimental)
 from opentelemetry.sdk._logs import LoggerProvider, LoggingHandler
 from opentelemetry.sdk._logs.export import BatchLogRecordProcessor
 from opentelemetry.exporter.otlp.proto.http._log_exporter import OTLPLogExporter
@@ -107,14 +108,18 @@ log_exporter = OTLPLogExporter(
     headers=HEADERS
 )
 logger_provider.add_log_record_processor(BatchLogRecordProcessor(log_exporter))
-log.set_logger_provider(logger_provider)
 
-otel_logger = log.get_logger(__name__)
-logging.basicConfig(level=logging.INFO)
+# OpenTelemetry logging handler
+otel_handler = LoggingHandler(level=logging.NOTSET, logger_provider=logger_provider)
+
+# Python loggers
 logger = logging.getLogger("demo-app")
-# Add OpenTelemetry logging handler
-handler = LoggingHandler(level=logging.NOTSET, logger_provider=logger_provider)
-logger.addHandler(handler)
+logger.setLevel(logging.INFO)
+logger.addHandler(otel_handler)
+
+otel_logger = logging.getLogger("otel-demo")
+otel_logger.setLevel(logging.INFO)
+otel_logger.addHandler(otel_handler)
 
 # --------------------------------
 # Auto Instrumentation
@@ -185,7 +190,7 @@ def error():
 
 @app.route("/metrics")
 def metrics_demo():
-    for i in range(5):
+    for _ in range(5):
         request_counter.add(1)
     logger.info("Metrics endpoint hit")
     return "Metrics generated"
