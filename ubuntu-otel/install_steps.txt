@@ -18,3 +18,106 @@ pip install opentelemetry-sdk
 pip install opentelemetry-exporter-otlp
 pip install opentelemetry-instrumentation-flask
 pip install opentelemetry-instrumentation-requests
+#############################################################################################
+
+nano app.py
+
+from flask import Flask
+import requests
+
+from opentelemetry import trace
+from opentelemetry.sdk.resources import Resource
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import BatchSpanProcessor
+from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
+
+from opentelemetry.instrumentation.flask import FlaskInstrumentor
+from opentelemetry.instrumentation.requests import RequestsInstrumentor
+
+
+# -----------------------------------
+# Flask Application
+# -----------------------------------
+app = Flask(__name__)
+
+
+# -----------------------------------
+# Dynatrace Configuration
+# -----------------------------------
+DYNATRACE_ENDPOINT = "https://wwl35201.live.dynatrace.com/api/v2/otlp/v1/traces"
+
+
+
+DYNATRACE_TOKEN = "dt0c01.IKL2DTVEM527NWBRZT63ZRN2.D5OXSNAVFEJ53QZ63KPXUQ73BWNLF3LHAWG6JPEEZBD6QDHCT3UTBJWUQJJWWOTU"
+
+
+# -----------------------------------
+# OpenTelemetry Resource
+# -----------------------------------
+resource = Resource.create({
+    "service.name": "flask-dynatrace-demo",
+    "service.version": "1.0",
+    "deployment.environment": "lab"
+})
+
+
+# -----------------------------------
+# Tracer Provider
+# -----------------------------------
+provider = TracerProvider(resource=resource)
+trace.set_tracer_provider(provider)
+
+
+# -----------------------------------
+# OTLP Exporter (Dynatrace)
+# -----------------------------------
+otlp_exporter = OTLPSpanExporter(
+    endpoint=DYNATRACE_ENDPOINT,
+    headers={
+        "Authorization": f"Api-Token {DYNATRACE_TOKEN}"
+    }
+)
+
+span_processor = BatchSpanProcessor(otlp_exporter)
+provider.add_span_processor(span_processor)
+
+
+# -----------------------------------
+# Auto Instrumentation
+# -----------------------------------
+FlaskInstrumentor().instrument_app(app)
+RequestsInstrumentor().instrument()
+
+
+# -----------------------------------
+# Routes
+# -----------------------------------
+@app.route("/")
+def home():
+    return "Hello Dynatrace Observability"
+
+
+@app.route("/api")
+def api():
+    requests.get("https://httpbin.org/get")
+    return "API called"
+
+
+@app.route("/orders")
+def orders():
+    requests.get("https://httpbin.org/delay/1")
+    return "Orders processed"
+
+
+# -----------------------------------
+# Start Flask
+# -----------------------------------
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=5000)
+
+#############################
+
+
+
+
+
