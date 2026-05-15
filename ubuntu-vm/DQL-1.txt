@@ -1,0 +1,55 @@
+########################################################################
+
+fetch logs
+| limit 20
+
+############################################################
+
+fetch logs
+| filter contains(content, "ZeroDivisionError")
+############################################################
+
+fetch spans
+| filter duration > 2s
+
+############################################################
+
+fetch spans
+| filter contains(endpoint.name, "/slow")
+
+############################################################
+
+fetch spans
+| summarize avg(duration)
+
+############################################################
+
+fetch spans
+| summarize max(duration)
+############################################################
+fetch spans
+| summarize count(), avg(duration), by:{endpoint.name}
+############################################################
+fetch spans
+| filter request.is_failed == true
+############################################################
+fetch spans
+| summarize requests=count(), by:{bin(timestamp, 1m)}
+
+############################################################
+
+fetch dt.entity.service
+
+############################################################
+fetch spans
+| summarize max(duration), by:{endpoint.name}
+| sort max(duration) desc
+############################################################
+
+fetch logs
+| filter contains(content, "python")
+###########################################################
+
+fetch spans
+| summarize count()
+##########################################################
