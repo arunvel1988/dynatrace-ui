@@ -1,0 +1,141 @@
+#############################################################################################
+
+sudo apt update
+
+sudo apt install docker.io docker-compose -y
+
+sudo systemctl enable docker
+sudo systemctl start docker
+
+#############################################################################################
+
+
+mkdir purepath-demo
+
+cd purepath-demo
+#############################################################################################
+
+nano app.py
+
+
+from flask import Flask
+import psycopg2
+import time
+
+app = Flask(__name__)
+
+@app.route("/")
+
+def home():
+
+    start = time.time()
+
+    conn = psycopg2.connect(
+        host="postgres",
+        database="testdb",
+        user="postgres",
+        password="password"
+    )
+
+    cur = conn.cursor()
+
+    # intentionally slow query
+    cur.execute("SELECT pg_sleep(2);")
+
+    cur.close()
+    conn.close()
+
+    end = time.time()
+
+    return f"Request completed in {end-start} seconds"
+
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=5000)
+
+#############################################################################################
+
+nano Dockerfile
+
+
+
+FROM python:3.10
+
+WORKDIR /app
+
+COPY . .
+
+RUN pip install flask psycopg2-binary
+
+CMD ["python", "app.py"]
+
+#############################################################################################
+nano nginx.conf
+
+
+events {}
+
+http {
+
+    server {
+
+        listen 80;
+
+        location / {
+
+            proxy_pass http://flaskapp:5000;
+
+        }
+    }
+}
+
+#############################################################################################
+nano docker-compose.yml
+
+
+version: '3'
+
+services:
+
+  nginx:
+
+    image: nginx:latest
+
+    container_name: nginx
+
+    ports:
+      - "80:80"
+
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf
+
+    depends_on:
+      - flaskapp
+
+
+  flaskapp:
+
+    build: .
+
+    container_name: flaskapp
+
+    depends_on:
+      - postgres
+
+
+  postgres:
+
+    image: postgres:15
+
+    container_name: postgres
+
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: testdb
+#############################################################################################
+
+sudo docker-compose up --build
+
+
+#############################################################################################
